@@ -1,0 +1,353 @@
+---
+title: "Statistics Project"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+## Project: calorie burning
+
+Erim Erdal (r0772570) - Jaldert Francois (r0653709) - Pinar Onat (r0772819) - Alicia Hernandez Gimenez (r0734014)
+
+This study explores the relationship between heat production, body mass and workout intensity. Measurements of heat production (variable calories), at different body Masses (variable weight, measured in kgs) and Work levels(variable calhour, measured in calories/hour) on a stationary bike were taken from a group of 24 volunteers. The aim of this study is to compare the use of complete Case analysis, Multiple imputation analysis and Inverse probability weighting in building a model to predict heat production given body mass and workout intensity.
+
+## Exploring the data and descriptive statistics
+Descriptive statistics and graphical summaries were carried out on this dataset before multiple imputation or ipw. As such only complete cases (16) were taken into account. This can induce bias and wrong conclusions, therefore interpreting these graphs and numbers can only give some rough perception of the data.
+A sample of the dataset is shown at Table 1.
+```{r echo=FALSE, results='asis', warning=FALSE}
+library(knitr)
+cal.df <- read.table(file="dataset-muscle-incomplete.txt")
+names(cal.df)[names(cal.df) == "V1"] <- "weight"
+names(cal.df)[names(cal.df) == "V2"] <- "calhour"
+names(cal.df)[names(cal.df) == "V3"] <- "calories"
+
+cal.df <- cal.df[-c(1), ]
+cal.df['weight'] <- as.numeric(as.character(cal.df$weight))
+cal.df['calhour'] <- as.numeric(as.character(cal.df$calhour))
+cal.df['calories'] <- as.numeric(as.character(cal.df$calories))
+
+kable(head(cal.df))
+```
+
+\begin{center}
+Table 1. Sample of the dataset.
+\end{center}
+The dataset contains measurements of calhour and weight which can be split up into groups (measurements at 43.7kg, 54.6kg,...). All variables were analysed as continuous variables since weight, calhour or calories can take on any (positive) value. The response variable (calories) has 8 missing values.
+
+```{r include=FALSE}
+kable(summary(cal.df))
+```
+```{r echo=FALSE, warning=FALSE, include=FALSE}
+sum(is.na(cal.df$calories))
+```
+
+Some descriptive statistics are shown in the following table. It can be seen that the mean and median of each variable are close to each other, indicating a symmetric distribution of the values.
+
+```{r echo=FALSE, results='asis', warning=FALSE}
+library(pastecs)
+library(kableExtra)
+kable(stat.desc(cal.df, basic = F)) %>%
+kable_styling(font_size = 8)
+```
+
+\begin{center}
+Table 2. Descriptive statistics per variable.
+\end{center}
+
+```{r echo=FALSE, results='asis', out.width="100%", fig.height=3.8, fig.align="center"}
+#out.height = "30%"
+cal.df.omitted <- na.omit(cal.df)
+plot(cal.df.omitted, main="Comparison of variables")
+```
+
+\begin{center}
+Figure 1. Comparison of variables.
+\end{center}
+The plot at figure 1 shows that there might be some positive correlation between calhour and calories. Increasing calhour seems to increase the resulting calories measured. The variable weight does not show a clear pattern.
+```{r include=FALSE}
+apply(cal.df.omitted, 2, FUN = shapiro.test)
+```
+```{r echo=FALSE, include=FALSE}
+kable(cor(cal.df.omitted, method = "spearman"))
+```
+
+```{r echo=FALSE, results='asis', warning=FALSE, fig.height=3.4}
+#out.height="30%"
+library(grid)
+library(gridExtra)
+par(mfrow=c(1,3))
+plot1<-plot(density(cal.df.omitted$weight), main = "weight")
+plot2<-plot(density(cal.df.omitted$calhour), main = "calhour")
+plot3<-plot(density(cal.df.omitted$calories), main = "calories")
+#vp1 <- viewport(width = 0.25, height = 0.75, x = 0.25, y= 0.5)
+#vp2 <- viewport(width = 0.25, height = 0.75, x = 0.50, y= 0.5)
+#vp3 <- viewport(width = 0.25, height = 0.75, x = 0.75, y= 0.5)
+#grid.arrange(plot1,plot2,plot3, top = "Density plots", layout_matrix = matrix(c(1,2,3), ncol=3, byrow=TRUE))
+#print(plot1, vp=vp1)
+#print(plot2, vp=vp2)
+#print(plot3, vp=vp3)
+```
+<!--Moreover, checking the density plots, it is observable that in the variable weight there are two separate densities, where mostly all the data belongs to high weights. <= keep in?? #@ali: i think that is interesnting, maybe we can keep it, if not, should we remove the plots?-->
+
+\begin{center}
+Figure 2. Density plots per variable.
+\end{center}
+```{r echo=FALSE, warning=FALSE, fig.height=3, out.width="100%"}
+#out.height="30%"
+library(grid)
+library(ggplot2)
+par(mfrow=c(1,2))
+boxplot(calories~weight, data=cal.df, na.rm=T)
+boxplot(calories~calhour, data=cal.df, na.rm=T)
+```
+
+\begin{center}
+Figure 3. Boxplot distribution per variable weight (left) and calhour (right).
+\end{center}
+The boxplot (Figure 3) shows that there is no clear correlation/increase in calories burned with an increasing weights size. Moreover, it shows also a great variability within each weight group for calories values, which is as expected since teh calhour (workout intesnity) differs within each weight group. In the calhour boxplot, there seems to be an increasing trend of calories used when increasing the workout intensity. Variability within each calhour group (variability caused by weight) is lower.
+
+
+### Graphical summary of missing data
+
+The amount of missing data corresponds to the 33% of the total data, which belongs to the measurements for the variable calories in 8 subjects (Figure 4).
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, out.width="100%", out.height="30%"}
+library(VIM)
+data.df.aggr <- aggr(cal.df,numbers=TRUE, prop=FALSE, ylab=c("missing measurements","missing measurements"))
+#title(main="Missing measurements by group")
+#data.df.aggr
+vp6 <- viewport(width = 1, height = 0.5, x = 0.25, y= 0.5)
+print(data.df.aggr, vp=vp6)
+```
+
+\begin{center}
+Figure 4. Missing measurements by group
+\end{center}
+
+
+```{r echo=FALSE, include=FALSE}
+aggr(cal.df, combined=TRUE, numbers = TRUE, prop = TRUE, cex.numbers=1, varheight = FALSE)
+```
+
+
+```{r echo=FALSE, warning=FALSE, out.width="100%", fig.height=3.8}
+#out.height="30%"
+#barplot missing amount for calhour or weight
+par(mfrow=c(1,2))
+barMiss(cal.df[,c("weight", "calories")], ylab = "# Calories observations")
+barMiss(cal.df[,c("calhour", 'calories')], ylab = "# Calories observations")
+
+```
+
+\begin{center}
+Figure 5. Missing values distribution withing groups
+\end{center}
+It is observable at figure 5 that the missigness seems to follow a random distribution between all weight groups. Whereas in the calhour variable, most measurements for calories were missing in the lower (13, 19) calhour groups (low workout intensity).
+ 
+## Complete Case Analysis
+The data has been analyzed by complete case analysis. Thus, 33% of the data, which corresponds to the missing values, have been dropped. 
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+library(papeR)
+cal.lm1 <- lm(calories~weight+calhour+I(weight*calhour), data = cal.df.omitted)
+kable(prettify(summary(cal.lm1)))
+```
+
+\begin{center}
+Table 3. Summary of the CC final model. 
+\end{center}
+Variables calhour, weight and the interaction term are significant in the complete case analysis (with a 95% confidence interval). There are no terms that can be dropped. The wald test is used to look if a model without interaction is significantly worse than the model with interaction.
+
+```{r include=FALSE}
+cal.lm2 <- lm(calories~weight+calhour, data = cal.df.omitted)
+summary(cal.lm2)
+cal.lm3 <- lm(calories~calhour, data = cal.df.omitted)
+summary(cal.lm3)
+cal.lm4 <- lm(calories~weight, data = cal.df.omitted)
+summary(cal.lm4)
+```
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(lmtest)
+waldtest(cal.lm1, cal.lm2)
+kable(prettify(waldtest(cal.lm1, cal.lm2)))
+```
+The wald test confirms that the interaction term is significant in our model.
+
+The assumptions of this regression model (linearity, normality of residuals and constant variance) were checked (figure 6).
+
+```{r echo=FALSE, , out.width="100%", fig.height=3.7}
+#out.height="30%"
+par(mfrow = c(2, 2))
+plot(cal.lm1)
+```
+```{r echo=FALSE, fig.height=3.7, out.width="100%"}
+cal.lm1.fit <- fitted(cal.lm1)
+cal.lm1.res <- rstandard(cal.lm1)
+par(mfrow=c(2,2))
+plot(cal.lm1.res~cal.df.omitted$weight)
+plot(cal.lm1.res~cal.df.omitted$calhour) # This pattern is not random TODO:?
+plot(cal.lm1.res~cal.lm1.fit) # seems like there is a relationship
+```
+
+\begin{center}
+Figure 6. Plots related to the CC regression model in order to check its assumptions.
+\end{center}
+The residuals are more or less distributed at random, there is no other apparent trend in the data.
+
+```{r echo=FALSE}
+shapiro.test(cal.lm1.res)
+```
+Normality of residuals holds. Using a linear regression model is possible. Our final model with complete case analysis:
+
+calories = -330.88 + 7.73 * weight + 11.79 * calhour - 0.13 I(weight*calhour)
+
+Notice that in this model calhour is slightly more significant and has a higher influence on the response variable. 
+```{r echo=FALSE, include=FALSE}
+hist(cal.lm1.res, prob=TRUE)
+```
+
+
+```{r include=FALSE}
+plot(cooks.distance(cal.lm1))
+```
+## Multiple Imputation
+Since our data has a MAR missing mechanism, the previous approach (Complete Case analysis) can introduce extreme bias. Completing the data with mean values would also introduce severe errors in the final analysis. Here multiple imputation approach was used to create 300 datasets with imputed data.
+
+We opted for a bayesian multiple imputation approach. Here the regression line estimate is taken into account, however drawing a value from the regression estimate would introduce errors since even the best values may differ from the actual unkown values. Therefore an uncertainty of the predicted values has to be taken into account. Bayesian mutliple imputation adds noise to the predicted values and, in contrast to stochastic regression imputation, also adds a parameter uncertainty. This parameter uncertainty is important since our predictions requires intercept, slope and standard deviation of the residuals to be known for imputing the missing data, while these values are unkown and estimated from the sample. Including parameter uncertainty takes into account that these values might differ when a new sample would have been drawn from the population. Moreover, bayesian multiple imputation was used to predict missing values, taking noise and parameter uncertainty into account.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE, include=FALSE}
+library(mice)
+library(VIM)
+imp <- mice(cal.df, m = 300, print=FALSE, method = "norm")
+summary(imp)
+imp$imp$calories[, 1:3]
+```
+The data was further explored to make sure no impossible values were imputated (negative calories). Furthermore, graphs were made to assess whether the imputated data are plausible and close to the real dataset (figure 7).
+
+```{r echo=FALSE, warning=FALSE, fig.align = "center", out.width="60%"}
+#par(mfrow=c(2,1))
+#plot(imp)
+com <- complete(imp, "long", inc=T)
+col <- rep(c("blue","red")[1+as.numeric(is.na(imp$data$calories))],101)
+stripplot(calories~.imp, data=com, jit=TRUE, fac=0.8, col=col, pch=20, cex=0.5, xlab="Imputation number")
+
+```
+
+\begin{center}
+Figure 7. Imputations made by 'norm' method.
+\end{center}
+Neither the data shows impossible values nor the graphs shows any skewed pattern. The imputations were succesfull and are usefull to further build a model.
+After that, a wald test was made in order to compare different models taking into account the imputed data. Where all possible linear models for prediction of calories were created. We compared the different models using the D1 multivariate wald test to assess which variables are insignificant and can be dropped. 
+ 
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+fit1 <- with(imp, lm(calories~calhour+weight+(calhour*weight)))
+fit2 <- with(imp, lm(calories~calhour+weight))
+fit3 <- with(imp, lm(calories~calhour))
+fit4 <- with(imp, lm(calories~weight))
+fit5 <- with(imp, lm(calories~1))
+print("Model with interaction - model without interaction")
+D1(fit1, fit2)
+print("model without interaction - model without calhour")
+D1(fit2, fit4)
+print("model without interaction - model without weight")
+D1(fit2, fit3)
+print("model with calhour - intercept model")
+D1(fit3, fit5)
+
+```
+There is a non-significant p.value when comparing a model with and without interaction term, the interaction term can be removed. The analysis shows that the variables calhour and weight are significant. Our final model thus has calhour and weight, which performs better than a model with only intercept or either of the variables alone (table 5).
+
+For illustration we show the full model with interaction term (table 4).
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+fit1 <- with(imp, lm(calories~calhour+weight+(calhour*weight)), conf.int = TRUE)
+combined <- pool(fit1)
+kable(prettify(summary(combined, conf.int = TRUE)))
+pool.r.squared(fit1)
+```
+
+\begin{center}
+Table 4. Complete model with interaction, which shows that there are insignificant variables.
+\end{center}
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+fit3 <- with(imp, lm(calories~calhour+weight), conf.int = TRUE)
+combined <- pool(fit3)
+kable(prettify(summary(combined, conf.int = TRUE)))
+pool.r.squared(fit3)
+```
+
+\begin{center}
+Table 5. Final model with calhour and weight variables.
+\end{center}
+
+All regressors are significant.
+
+Final model:
+
+calories = 43.69 + 4 * calhour + 1.37 * weight
+
+## Inverse Probability Weighting 
+
+With inverse probability weighting we are not predicting/estimating missing values, but assign weights to variables in certain groups. Measurements of data in a certain group receive a weight depending on the amount of missing data belonging to that group. IPW eliminates bias that might occur when data for certain groups is much more incomplete.
+
+First a logistic regression was made to a variable R, which has a value 0 if the measurement was missing or 1 if there was a measurement for that group. The inverse of this probability (of missingness) was used to create a new variable which holds the "variables weight". The most complex model (calhour+weight+interaction term) was used to assign weights to the groups.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# IPW
+cal.df$r<-as.numeric(!is.na(cal.df$calories))
+# cal.df$calhour<-relevel(cal.df$calhour,ref="56") relevel to check if 13 is significant
+## Fitting the logistic regression model to calculate the probabilities of being complete >
+cal.ipw.glm<-glm(r ~ calhour+weight+(calhour*weight), data=cal.df,family=binomial)
+kable(prettify(summary(cal.ipw.glm) ))
+cal.df$w<-1/fitted(cal.ipw.glm)
+#cal.df
+```
+
+Note that the p.values for this logit regression model are extremely high (insignificant). The problem here is that the dataset contains the group calhour (13) which has no measured values and a group calhour (19) which only has 1 measurement that we can assign a weight to.
+
+Fitting the complete model (calories~weight+calhour+I(calhour*weight)) taking the weights into account:
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+lm1.ipw<- glm(calories ~ weight+calhour+I(calhour*weight), data=cal.df, family=gaussian, weights=cal.df$w)
+kable(prettify(summary(lm1.ipw)))
+lm2.ipw<- glm(calories ~ weight+calhour, data=cal.df, family=gaussian, weights=cal.df$w)
+lm3.ipw<- glm(calories ~ calhour, data=cal.df, family=gaussian, weights=cal.df$w)
+lm4.ipw<- glm(calories ~ weight, data=cal.df, family=gaussian, weights=cal.df$w)
+```
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(lmtest)
+waldtest(lm1.ipw, lm2.ipw)
+```
+Using the wald test shows that removing the interaction yields a significant worse model. We keep the interaction term. The final model has weight, calhour and interaction term as predictor variables.
+
+The big difference between the null deviance and residual deviance shows that the final model performs a lot better than the model with only the intercept. Furthermore, we observe a high standard error of our intercept estimate.
+
+Final model:
+
+calories = -330.88 + 7.72 * weight + 11.79 * calhour - 0.13 * (calhour*weight)
+
+Note that this final model is the same final model we obtained from complete case analysis. This is not a suprise since all measurements for the group calhour 13 are missing and thus not included in this model (no real weight could be assigned). 
+
+## IPW, Multiple Imputation and Complete Case comparison
+
+Both the complete case and IPW methods gave a model with all explanatory variables and the interaction term. Both models were almost identical with equal slope parameters. Only the confidence interval was smaller for our analysis with IPW. It is not a suprise that both models are almost identical: since all data was missing from the lowest calhour group (calhour=13), IPW fails to assign "weights" and takes these missing values into account. Although the advantage of IPW that no data is created (only seen data is used), it's clear disadvantage is that it seems to fail if complete groups are missing. Complete case analysis is a valid approach under MCAR, but the problem here is that data misses following a MAR principle: data is absent based upon the calhour value.
+
+Multiple Imputation on the other hand gives a final model with calhour and weight as independent variables. This method has less trouble with all data missing in the lowest calhour group. The missing values were estimated by Bayesian Multiple Imputation taking the regression line, an extra noise term and a parameter uncertainty into account. The advantage of Multiple imputation in this case is that completely missing groups are taken into account by means of data generation where IPW failed to do so. Although the drawback is that we create data based upon the observed dataset, in this case it is better than the other approaches but it remeains an estimate and has considerable bias.
+
+## Conclusion
+
+Final model after all the analysis: 
+calories = 43.69 + 4 * calhour + 1.37 * weight
+
+In relation to the obtained model, we can see that with every 1 unit of increased weight in kg's when calhour is kept stable, calories burned will increase 1.37 calories. Also when weight is kept stable, every 1 unit of increase in calhour variable will result in an increase of 4 calories burned. Thus, both of these independent variables have positive correlation with the response variable, calories burned. Finally, model argues that interaction term is insignificant, meaning two different individuals with different weights will burn the same amount of calories while conducting the exercise with the same workout intensity. Neverthless, the data collected from the experiment had too little observations, and 33% of that data were missing, which caused some faulty implementations of missing data analysis. More data would be necessary to make more plausible conclussions. 
+
+It is also questionable on how the Multiple Imputation model behaves when an entire group of data is missing, in our case happens to be 13.0. Multiple Imputation will try to generate a model in order to estimate these variables that are missing. However, in our case, the estimated variables are the bottom-most values of the dataset and no single observation from that group exist. This degrades the ability of the model generated by Multiple Imputation, creating bias. Confidence intervals of the final model offered by Multiple Imputation shows us these coefficents have high variability, while calhour being the one predictor with the smallest variability. This shows us once again that our dataset is too small to make accurate, stable predictions for the coefficients of the final model. 
+
+Our final model argues that the more you weight, the more calories you will burn when you do the same exercise with your peers in the study. Model also argues that the higher calhour workout that you conduct, you will be burning more calories than your peers at the same level of weight. It is also argued that workout intensity (calhour) is a more determining factor for the calories burned than weight of the individual (weight).
+
+
+
+## References
+Greenwood, M. (1918). "On the efficiency of muscular work." Proceedings of the Royal Society of London. Series B,
+Containing Papers of a Biological Character, 90(627), 199-214.
+
+Stef Van Buuren, (2018). "Flexible Imputation of Missing Data" Second Edition. Taylor & Francis Group, p. 415
